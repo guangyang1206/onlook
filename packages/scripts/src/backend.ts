@@ -334,61 +334,54 @@ const createProcessHandlers = (
 
 const startBackendAndExtractKeys = async (): Promise<BackendKeys> => {
     console.log(chalk.yellow('🚀 Starting Supabase backend...'));
-    const spinner = ora('Waiting for Supabase to initialize...').start();
-
-    const startProc = spawn('bun run', ['backend:start'], { cwd: rootDir, shell: true });
-
-    await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            startProc.kill();
-            spinner.fail('Timed out waiting for Supabase keys.');
-            reject(new Error('Supabase start timeout'));
-        }, 120_000);
-
-        startProc.on('close', (code) => {
-            clearTimeout(timeout);
-            if (code === 0) {
-                resolve();
-            } else {
-                spinner.fail('Failed to start Supabase backend.');
-                reject(new Error('Supabase start failed'));
-            }
-        });
-
-        startProc.on('error', (err) => {
-            clearTimeout(timeout);
-            spinner.fail(`Backend error: ${err.message}`);
-            reject(err);
-        });
+    
+    // Step 1: Start Supabase in detached mode (don't wait for it to finish)
+    console.log(chalk.cyan('📦 Starting Supabase containers (this may take a few minutes)...'));
+    const startProc = spawn('bun', ['run', 'backend:start'], { 
+        cwd: rootDir, 
+        shell: false,
+        detached: true,
+        stdio: 'ignore' 
     });
-
-    spinner.succeed('Supabase backend started.');
-
-    // Now get all keys from status
-    const keysSpinner = ora('Extracting Supabase keys...').start();
+    startProc.unref(); // Let it run in background
+    
+    // Step 2: Poll for Supabase status until it's ready (max 5 minutes)
+    const spinner = ora('Waiting for Supabase to be ready...').start();
     const backendDir = path.join(rootDir, 'apps', 'backend');
-    const statusProc = spawn('supabase', ['status', '-o', 'json'], {
-        cwd: backendDir,
-        shell: true,
-    });
-
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            statusProc.kill();
-            keysSpinner.fail('Timed out waiting for Supabase keys.');
-            reject(new Error('Supabase status timeout'));
-        }, 30_000);
-
-        const { onData, onClose, onError } = createProcessHandlers(
-            statusProc,
-            keysSpinner,
-            timeout,
-            resolve,
-            reject,
-        );
-
-        statusProc.stdout?.on('data', onData);
-        statusProc.on('close', onClose);
-        statusProc.on('error', onError);
-    });
-};
+    
+    const maxAttempts = 30; // 30 attempts
+    const intervalMs = 10_000; // 10 seconds between attempts
+    
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+        
+        try {
+            const statusProc = spawn('supabase', ['status', '-o', 'json'], {
+                cwd: backendDir,
+                shell: true,
+            });
+            
+            const output = await new Promise<string>((resolve, reject) => {
+                let data = '';
+                statusProc.stdout?.on('data', (chunk) => { data += chunk; });
+                statusProc.on('close', (code) => {
+                    if (code === 0) resolve(data);
+                    else reject(new Error(`Status check failed with code ${code}`));
+                });
+                statusProc.on('error', reject);
+            });
+            
+            const keys = extractSupabaseKeys(output);
+            if (keys) {
+                spinner.succeed('Supabase backend started successfully.');
+                return keys;
+            }
+        } catch (err) {
+            // Ignore errors and continue polling
+            process.stdout.write('.');
+        }
+    }
+    
+    spinner.fail('Timed out waiting for Supabase to start.');
+    throw new Error('Supabase start timeout - please check Docker and try again');
+};;
