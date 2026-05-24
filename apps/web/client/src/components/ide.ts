@@ -48,4 +48,23 @@ export class IDE {
         }
         return command;
     }
+
+    getDownloadUrl(): string {
+        switch (this.type) {
+            case IdeType.VS_CODE:
+                return 'https://code.visualstudio.com/download';
+            case IdeType.CURSOR:
+                return 'https://cursor.sh';
+            case IdeType.ZED:
+                return 'https://zed.dev';
+            case IdeType.WINDSURF:
+                return 'https://windsurf.com';
+            default:
+                return '';
+        }
+    }
+
+    getIdeName(): string {
+        return this.displayName;
+    }
 }

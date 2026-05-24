@@ -3,6 +3,7 @@ import {
     type BrandTabValue,
     ChatType,
     EditorMode,
+    IdeType,
     InsertMode,
     type LeftPanelTabValue
 } from '@onlook/models';
@@ -18,6 +19,7 @@ export class StateManager {
     isDragSelecting = false;
 
     editorMode: EditorMode = EditorMode.DESIGN;
+    ideType: IdeType = IdeType.ONLOOK;
     insertMode: InsertMode | null = null;
     leftPanelTab: LeftPanelTabValue | null = null;
     brandTab: BrandTabValue | null = null;
@@ -52,6 +54,7 @@ export class StateManager {
         this.publishOpen = false;
         this.branchTab = null;
         this.manageBranchId = null;
+        this.ideType = IdeType.ONLOOK;
         this.resetCanvasScrollingDebounced.cancel();
     }
 }

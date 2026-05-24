@@ -1,5 +1,7 @@
-import { EditorMode, type CodeNavigationTarget } from "@onlook/models";
+import { EditorMode, type CodeNavigationTarget, IdeType } from "@onlook/models";
+import { IDE } from "@/components/ide";
 import { makeAutoObservable } from "mobx";
+import { toast } from "@onlook/ui/sonner";
 import type { EditorEngine } from "../engine";
 
 export class IdeManager {
@@ -55,8 +57,43 @@ export class IdeManager {
 
             // Switch to code tab
             this.editorEngine.state.editorMode = EditorMode.CODE;
+
+            // Try to open in external IDE (VS Code, Cursor, etc.)
+            await this.tryOpenInExternalIde(metadata.path, startLine);
         } catch (error) {
             console.error('[IdeManager] Error opening code block:', error);
+        }
+    }
+
+    private async tryOpenInExternalIde(filePath: string, line: number): Promise<void> {
+        try {
+            const ideType = this.editorEngine.state.ideType || IdeType.ONLOOK;
+            
+            // If using internal editor only, skip external IDE open
+            if (ideType === IdeType.ONLOOK) {
+                return;
+            }
+
+            const ide = IDE.fromType(ideType);
+            const ideUrl = ide.getCodeFileCommand(filePath, line);
+            
+            // Try to open the IDE URL
+            window.open(ideUrl, '_blank');
+            
+            // Show a toast to inform user
+            toast.info(`Opening in ${ide.getIdeName()}... If nothing happens, please install ${ide.getIdeName()}.`);
+            
+            // Heuristic detection: if page is still active after 3 seconds, show warning
+            setTimeout(() => {
+                toast.dismiss();
+                toast.warning(
+                    `Unable to detect ${ide.getIdeName()}. ` +
+                    `Please install it from ${ide.getDownloadUrl()} and try again.`,
+                    { duration: 6000 }
+                );
+            }, 3000);
+        } catch (error) {
+            console.error('[IdeManager] Error opening in external IDE:', error);
         }
     }
 
