@@ -11,6 +11,7 @@ import { createAdminClient } from '@/utils/supabase/admin';
 import { createClient } from '@/utils/supabase/server';
 import { db } from '@onlook/db/src/client';
 import type { User } from '@supabase/supabase-js';
+import { AuthSessionMissingError } from '@supabase/supabase-js';
 import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import type { SetRequiredDeep } from 'type-fest';
@@ -35,7 +36,17 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
         error,
     } = await supabase.auth.getUser();
 
+    // AuthSessionMissingError means no session (anonymous user) — treat as ctx.user = null
+    // Other errors (malformed JWT, network failures) still surface as UNAUTHORIZED
     if (error) {
+        if (error instanceof AuthSessionMissingError) {
+            return {
+                db,
+                supabase,
+                user: null,
+                ...opts,
+            };
+        }
         throw new TRPCError({ code: 'UNAUTHORIZED', message: error.message });
     }
 
@@ -137,6 +148,45 @@ export const protectedProcedure = t.procedure.use(timingMiddleware).use(({ ctx, 
         throw new TRPCError({
             code: 'UNAUTHORIZED',
             message: 'User must have an email address to access this resource',
+        });
+    }
+
+    return next({
+        ctx: {
+            // infers the `session` as non-nullable
+            user: ctx.user as SetRequiredDeep<User, 'email'>,
+            db: ctx.db,
+        },
+    });
+});
+
+/**
+ * Optional auth procedure
+ *
+ * Like `protectedProcedure` but does NOT throw when `ctx.user` is null.
+ * Use for endpoints that should work for both authenticated and anonymous users.
+ * Endpoints opt in explicitly by using this procedure.
+ *
+ * @see https://trpc.io/docs/procedures
+ */
+export const optionalAuthProcedure = t.procedure.use(timingMiddleware).use(({ ctx, next }) => {
+    if (!ctx.user) {
+        // User is not authenticated — proceed with null user
+        return next({
+            ctx: {
+                user: null,
+                db: ctx.db,
+            },
+        });
+    }
+
+    if (!ctx.user.email) {
+        // User is authenticated but has no email — proceed with null user
+        return next({
+            ctx: {
+                user: null,
+                db: ctx.db,
+            },
         });
     }
 

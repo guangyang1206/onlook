@@ -45,6 +45,38 @@ export const subscriptionRouter = createTRPCRouter({
 
         return fromDbSubscription(subscription, scheduledPrice);
     }),
+    getOptional: optionalAuthProcedure.query(async ({ ctx }) => {
+        if (!ctx.user) {
+            return null;
+        }
+
+        const user = ctx.user;
+        const subscription = await ctx.db.query.subscriptions.findFirst({
+            where: and(
+                eq(subscriptions.userId, user.id),
+                eq(subscriptions.status, SubscriptionStatus.ACTIVE),
+            ),
+            with: {
+                product: true,
+                price: true,
+            },
+        });
+
+        if (!subscription) {
+            console.log('No active subscription found for user', user.id);
+            return null;
+        }
+
+        // If there is a scheduled price, we need to fetch it from the database.
+        let scheduledPrice = null;
+        if (subscription.scheduledPriceId) {
+            scheduledPrice = await ctx.db.query.prices.findFirst({
+                where: eq(prices.id, subscription.scheduledPriceId),
+            }) ?? null;
+        }
+
+        return fromDbSubscription(subscription, scheduledPrice);
+    }),
     getPriceId: protectedProcedure.input(z.object({
         priceKey: z.nativeEnum(PriceKey),
     })).mutation(async ({ input, ctx }) => {

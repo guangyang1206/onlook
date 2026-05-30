@@ -26,6 +26,27 @@ export const userRouter = createTRPCRouter({
         }) : null;
         return userData;
     }),
+    getOptional: optionalAuthProcedure.query(async ({ ctx }) => {
+        if (!ctx.user) {
+            return null;
+        }
+
+        const authUser = ctx.user;
+        const user = await ctx.db.query.users.findFirst({
+            where: eq(users.id, authUser.id),
+        });
+
+        const { displayName, firstName, lastName } = getUserName(authUser);
+        const userData = user ? fromDbUser({
+            ...user,
+            firstName: user.firstName ?? firstName,
+            lastName: user.lastName ?? lastName,
+            displayName: user.displayName ?? displayName,
+            email: user.email ?? authUser.email,
+            avatarUrl: user.avatarUrl ?? authUser.user_metadata.avatarUrl,
+        }) : null;
+        return userData;
+    }),
     getById: protectedProcedure.input(z.string()).query(async ({ ctx, input }) => {
         const user = await ctx.db.query.users.findFirst({
             where: eq(users.id, input),
