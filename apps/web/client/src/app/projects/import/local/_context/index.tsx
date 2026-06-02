@@ -211,7 +211,14 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
                     fileName: 'layout',
                     targetExtensions: NEXT_JS_FILE_EXTENSIONS,
                     potentialPaths: ['app', 'src/app'],
-                }),
+                }) ||
+                // Also match Next.js route groups like `(marketing)/layout.tsx` or `src/(dashboard)/layout.tsx`
+                files.some(
+                    (f) =>
+                        f.path.includes('/app/') &&
+                        f.path.endsWith('/layout') &&
+                        NEXT_JS_FILE_EXTENSIONS.some((ext) => f.path.endsWith(ext)),
+                ),
             );
 
             if (hasAppLayout) {
@@ -221,6 +228,18 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
                 const hasPagesDir = files.some(
                     (f) => f.path.includes('pages/') || f.path.includes('src/pages/'),
                 );
+
+                // Also check for Pages Router inside route groups: `(app)/pages/...`
+                if (!hasPagesDir) {
+                    const hasPagesInRouteGroup = files.some(
+                        (f) =>
+                            /\/\)[^\)]+\/pages\//.test(f.path) ||
+                            /src\/\)[^\)]+\/pages\//.test(f.path),
+                    );
+                    if (hasPagesInRouteGroup) {
+                        return { isValid: true, routerType: RouterType.PAGES };
+                    }
+                }
 
                 if (!hasPagesDir) {
                     return {
